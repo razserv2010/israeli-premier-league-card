@@ -1,4 +1,8 @@
-import { LitElement, html, css } from "lit-element";
+const LitElement = customElements.get("home-assistant") 
+  ? Object.getPrototypeOf(customElements.get("home-assistant"))
+  : Object.getPrototypeOf(customElements.get("ha-panel-lovelace") || HTMLElement);
+
+const { html, css } = LitElement.prototype.constructor;
 
 // ─── כרטיס משחקים ────────────────────────────────────────────────────────────
 
