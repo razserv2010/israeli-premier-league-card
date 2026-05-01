@@ -1,0 +1,7 @@
+{
+  "name": "Israeli Premier League Card",
+  "content_in_root": true,
+  "filename": "israeli-premier-league-card.js",
+  "homeassistant": "2023.1.0",
+  "render_readme": true
+}
