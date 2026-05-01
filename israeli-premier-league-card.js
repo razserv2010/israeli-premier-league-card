@@ -4,12 +4,15 @@ class IsraeliPremierLeagueCard extends HTMLElement {
     this.attachShadow({ mode: "open" });
     this._recentEvents = new Map();
     this._eventSubscriptions = [];
+    this._lastFixturesJson = null;
+    this._initialized = false;
   }
 
   setConfig(config) {
     if (!config.entity) throw new Error("יש להגדיר entity");
     this._config = config;
-    this._render();
+    this._lastFixturesJson = null;
+    this._initialized = false;
   }
 
   set hass(hass) {
@@ -18,6 +21,10 @@ class IsraeliPremierLeagueCard extends HTMLElement {
       this._subscribeToEvents();
       this._subscribed = true;
     }
+    const stateObj = hass.states[this._config?.entity];
+    const fixturesJson = JSON.stringify(stateObj?.attributes?.fixtures || []);
+    if (fixturesJson === this._lastFixturesJson && this._initialized) return;
+    this._lastFixturesJson = fixturesJson;
     this._render();
   }
 
@@ -29,7 +36,7 @@ class IsraeliPremierLeagueCard extends HTMLElement {
 
   static getStubConfig() {
     return {
-      entity: "sensor.ligat_haal_meshahkim_karovim",
+      entity: "sensor.lygt_h_l_mshkhqym_qrvbym",
       title: "ליגת העל",
       max_events_visible: 5,
       max_events_total: 20,
@@ -68,8 +75,13 @@ class IsraeliPremierLeagueCard extends HTMLElement {
       }).catch(() => {});
     }
     this._recentEvents.set(key, true);
+    this._lastFixturesJson = null;
     this._render();
-    setTimeout(() => { this._recentEvents.delete(key); this._render(); }, 5000);
+    setTimeout(() => {
+      this._recentEvents.delete(key);
+      this._lastFixturesJson = null;
+      this._render();
+    }, 5000);
   }
 
   _formatDate(dateStr) {
@@ -103,14 +115,14 @@ class IsraeliPremierLeagueCard extends HTMLElement {
   _render() {
     if (!this._hass || !this._config) return;
 
-    const cfg      = this._config;
+    const cfg     = this._config;
     const stateObj = this._hass.states[cfg.entity];
-    const title    = cfg.title || "ליגת העל";
-    const maxVis   = cfg.max_events_visible ?? 5;
-    const maxTot   = cfg.max_events_total   ?? 20;
-    const showFin  = cfg.show_finished_matches !== false;
-    const showCh   = cfg.show_channels !== false;
-    const hideHdr  = cfg.hide_header === true;
+    const title   = cfg.title || "ליגת העל";
+    const maxVis  = cfg.max_events_visible ?? 5;
+    const maxTot  = cfg.max_events_total   ?? 20;
+    const showFin = cfg.show_finished_matches !== false;
+    const showCh  = cfg.show_channels !== false;
+    const hideHdr = cfg.hide_header === true;
 
     if (!stateObj) {
       this.shadowRoot.innerHTML = `<ha-card><div style="padding:16px;color:red">Entity לא נמצא: ${cfg.entity}</div></ha-card>`;
@@ -177,6 +189,17 @@ class IsraeliPremierLeagueCard extends HTMLElement {
         ${fixtures.length ? `<span class="badge">${fixtures.length}</span>` : ""}
       </div>`;
 
+    // עדכון חלקי — רק תוכן הגלילה, בלי לאפס את המבנה
+    if (this._initialized) {
+      const scrollEl = this.shadowRoot.querySelector(".scroll-content");
+      if (scrollEl) {
+        scrollEl.innerHTML = emptyHtml + groupsHtml;
+        return;
+      }
+    }
+
+    // render ראשון בלבד
+    this._initialized = true;
     this.shadowRoot.innerHTML = `
       <style>
         :host {
@@ -210,9 +233,8 @@ class IsraeliPremierLeagueCard extends HTMLElement {
           border-radius: 100px;
         }
         .scroll-content {
-          overflow-y: scroll;
-          -webkit-overflow-scrolling: touch;
-          overscroll-behavior: contain;
+          overflow-y: auto;
+          max-height: ${scrollHeight}px;
         }
         .empty {
           padding: 32px;
@@ -335,7 +357,7 @@ class IsraeliPremierLeagueCard extends HTMLElement {
       </style>
       <ha-card>
         ${headerHtml}
-        <div class="scroll-content" style="max-height:${scrollHeight}px; overflow-y:scroll; overscroll-behavior:contain; -webkit-overflow-scrolling:touch;">
+        <div class="scroll-content">
           ${emptyHtml}
           ${groupsHtml}
         </div>
@@ -358,7 +380,6 @@ class IsraeliPremierLeagueCardEditor extends HTMLElement {
 
   set hass(hass) {
     this._hass = hass;
-    this._render();
   }
 
   _fire(config) {
@@ -370,7 +391,6 @@ class IsraeliPremierLeagueCardEditor extends HTMLElement {
   _render() {
     if (!this._config) return;
     const c = this._config;
-
     this.shadowRoot.innerHTML = `
       <style>
         .cfg { display:flex; flex-direction:column; gap:14px; padding:4px; direction:rtl; }
