@@ -229,36 +229,36 @@ class IsraeliPremierLeagueCardEditor extends HTMLElement {
     this.innerHTML = `
       <div style="direction:rtl;display:flex;flex-direction:column;gap:12px;padding:4px;">
         <div>
-          <label style="font-size:12px;color:#888;">Entity ID</label>
-          <input id="f-entity" type="text" value="${c.entity||''}" style="width:100%;padding:8px;border-radius:6px;border:1px solid #444;background:#1e293b;color:#e2e8f0;font-size:13px;box-sizing:border-box;">
+          <label style="font-size:12px;color:var(--secondary-text-color);">Entity ID</label>
+          <input id="f-entity" type="text" value="${c.entity||''}" style="width:100%;padding:8px;border-radius:6px;border:1px solid var(--divider-color);background:var(--card-background-color);color:var(--primary-text-color);font-size:13px;box-sizing:border-box;">
         </div>
         <div>
-          <label style="font-size:12px;color:#888;">כותרת</label>
-          <input id="f-title" type="text" value="${c.title||'ליגת העל'}" style="width:100%;padding:8px;border-radius:6px;border:1px solid #444;background:#1e293b;color:#e2e8f0;font-size:13px;box-sizing:border-box;">
+          <label style="font-size:12px;color:var(--secondary-text-color);">כותרת</label>
+          <input id="f-title" type="text" value="${c.title||'ליגת העל'}" style="width:100%;padding:8px;border-radius:6px;border:1px solid var(--divider-color);background:var(--card-background-color);color:var(--primary-text-color);font-size:13px;box-sizing:border-box;">
         </div>
         <div>
-          <label style="font-size:12px;color:#888;">משחקים גלויים (ללא גלילה)</label>
-          <input id="f-vis" type="number" min="1" max="20" value="${c.max_events_visible||5}" style="width:100%;padding:8px;border-radius:6px;border:1px solid #444;background:#1e293b;color:#e2e8f0;font-size:13px;box-sizing:border-box;">
+          <label style="font-size:12px;color:var(--secondary-text-color);">משחקים גלויים (ללא גלילה)</label>
+          <input id="f-vis" type="number" min="1" max="20" value="${c.max_events_visible||5}" style="width:100%;padding:8px;border-radius:6px;border:1px solid var(--divider-color);background:var(--card-background-color);color:var(--primary-text-color);font-size:13px;box-sizing:border-box;">
         </div>
         <div>
-          <label style="font-size:12px;color:#888;">סך משחקים (עם גלילה)</label>
-          <input id="f-tot" type="number" min="1" max="50" value="${c.max_events_total||20}" style="width:100%;padding:8px;border-radius:6px;border:1px solid #444;background:#1e293b;color:#e2e8f0;font-size:13px;box-sizing:border-box;">
+          <label style="font-size:12px;color:var(--secondary-text-color);">סך משחקים (עם גלילה)</label>
+          <input id="f-tot" type="number" min="1" max="50" value="${c.max_events_total||20}" style="width:100%;padding:8px;border-radius:6px;border:1px solid var(--divider-color);background:var(--card-background-color);color:var(--primary-text-color);font-size:13px;box-sizing:border-box;">
         </div>
         <div>
-          <label style="font-size:12px;color:#888;">הדגש משחק X דקות לפני (ברירת מחדל: 60)</label>
-          <input id="f-soon" type="number" min="10" max="240" value="${c.soon_minutes||60}" style="width:100%;padding:8px;border-radius:6px;border:1px solid #444;background:#1e293b;color:#e2e8f0;font-size:13px;box-sizing:border-box;">
+          <label style="font-size:12px;color:var(--secondary-text-color);">הדגש משחק X דקות לפני (ברירת מחדל: 60)</label>
+          <input id="f-soon" type="number" min="10" max="240" value="${c.soon_minutes||60}" style="width:100%;padding:8px;border-radius:6px;border:1px solid var(--divider-color);background:var(--card-background-color);color:var(--primary-text-color);font-size:13px;box-sizing:border-box;">
         </div>
         <label style="display:flex;align-items:center;gap:8px;cursor:pointer;">
           <input id="f-fin" type="checkbox" ${c.show_finished_matches!==false?'checked':''}>
-          <span style="font-size:13px;color:#e2e8f0;">הצג משחקים שהסתיימו</span>
+          <span style="font-size:13px;color:var(--primary-text-color);">הצג משחקים שהסתיימו</span>
         </label>
         <label style="display:flex;align-items:center;gap:8px;cursor:pointer;">
           <input id="f-ch" type="checkbox" ${c.show_channels!==false?'checked':''}>
-          <span style="font-size:13px;color:#e2e8f0;">הצג ערוצי שידור</span>
+          <span style="font-size:13px;color:var(--primary-text-color);">הצג ערוצי שידור</span>
         </label>
         <label style="display:flex;align-items:center;gap:8px;cursor:pointer;">
           <input id="f-hdr" type="checkbox" ${c.hide_header?'checked':''}>
-          <span style="font-size:13px;color:#e2e8f0;">הסתר כותרת</span>
+          <span style="font-size:13px;color:var(--primary-text-color);">הסתר כותרת</span>
         </label>
       </div>`;
 
