@@ -121,7 +121,6 @@ class IsraeliPremierLeagueCard extends HTMLElement {
     if (!showFin) fixtures = fixtures.filter(f => !this._isFinished(f.status_short));
     fixtures = fixtures.slice(0, maxTot);
 
-    // Group by date
     const groups = {};
     for (const f of fixtures) {
       const k = f.match_date || "unknown";
@@ -210,7 +209,11 @@ class IsraeliPremierLeagueCard extends HTMLElement {
           padding: 2px 9px;
           border-radius: 100px;
         }
-        .scroll-content { overflow-y: auto; }
+        .scroll-content {
+          overflow-y: scroll;
+          -webkit-overflow-scrolling: touch;
+          overscroll-behavior: contain;
+        }
         .empty {
           padding: 32px;
           text-align: center;
@@ -332,7 +335,7 @@ class IsraeliPremierLeagueCard extends HTMLElement {
       </style>
       <ha-card>
         ${headerHtml}
-        <div class="scroll-content" style="max-height:${scrollHeight}px;">
+        <div class="scroll-content" style="max-height:${scrollHeight}px; overflow-y:scroll; overscroll-behavior:contain; -webkit-overflow-scrolling:touch;">
           ${emptyHtml}
           ${groupsHtml}
         </div>
@@ -341,8 +344,6 @@ class IsraeliPremierLeagueCard extends HTMLElement {
 }
 
 customElements.define("israeli-premier-league-card", IsraeliPremierLeagueCard);
-
-// ─── Editor ──────────────────────────────────────────────────────────────────
 
 class IsraeliPremierLeagueCardEditor extends HTMLElement {
   constructor() {
@@ -388,7 +389,7 @@ class IsraeliPremierLeagueCardEditor extends HTMLElement {
         <h4>סנסור</h4>
         <div>
           <label>Entity ID</label>
-          <input type="text" id="entity" value="${c.entity || ""}" placeholder="sensor.ligat_haal_meshahkim_karovim">
+          <input type="text" id="entity" value="${c.entity || ""}" placeholder="sensor.lygt_h_l_mshkhqym_qrvbym">
         </div>
         <div>
           <label>כותרת</label>
@@ -431,8 +432,6 @@ class IsraeliPremierLeagueCardEditor extends HTMLElement {
 }
 
 customElements.define("israeli-premier-league-card-editor", IsraeliPremierLeagueCardEditor);
-
-// ─── HACS registration ───────────────────────────────────────────────────────
 
 window.customCards = window.customCards || [];
 window.customCards.push({
