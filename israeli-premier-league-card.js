@@ -1,70 +1,24 @@
-import { LitElement, html, css } from "lit";
-
-class IsraeliPremierLeagueCard extends LitElement {
-  static get properties() {
-    return {
-      hass: {},
-      _config: {},
-      _recentEventMatches: { type: Object },
-    };
-  }
-
+class IsraeliPremierLeagueCard extends HTMLElement {
   constructor() {
     super();
-    this._recentEventMatches = new Map();
-    this._eventSubscriptions = [];
+    this._initialized = false;
+    this._lastData = null;
   }
 
   setConfig(config) {
     if (!config.entity) throw new Error("יש להגדיר entity");
     this._config = config;
-    this.maxEventsVisible = config.max_events_visible ?? 5;
-    this.maxEventsTotal   = config.max_events_total   ?? 20;
-    this.showFinished     = config.show_finished_matches !== false;
-    this.hideHeader       = config.hide_header === true;
-    this.showChannels     = config.show_channels !== false;
+    this._initialized = false;
+    this._lastData = null;
   }
 
-  connectedCallback() {
-    super.connectedCallback();
-    this._subscribeToEvents();
-  }
-
-  disconnectedCallback() {
-    super.disconnectedCallback();
-    if (this._eventSubscriptions && Array.isArray(this._eventSubscriptions)) {
-      this._eventSubscriptions.forEach(sub => { if (sub) sub.unsubscribe?.(); });
-      this._eventSubscriptions = [];
-    }
-  }
-
-  _subscribeToEvents() {
-    if (!this.hass?.connection) return;
-    this._eventSubscriptions = [];
-    ["ipl_goal", "ipl_match_finished"].forEach(evt => {
-      this._eventSubscriptions.push(
-        this.hass.connection.subscribeEvents(e => this._handleEvent(e), evt)
-      );
-    });
-  }
-
-  _handleEvent(event) {
-    const d = event.data;
-    const key = `${d.home_team}_${d.away_team}`;
-    let msg = "";
-    if (event.event_type === "ipl_goal") {
-      msg = `⚽ שער! ${d.player} — ${d.home_team} ${d.home_score}:${d.away_score} ${d.away_team}`;
-    } else if (event.event_type === "ipl_match_finished") {
-      msg = `✅ סיום: ${d.home_team} ${d.home_score}:${d.away_score} ${d.away_team}`;
-    }
-    if (msg && this.hass) {
-      this.hass.callService("persistent_notification", "create", {
-        message: msg, title: "ליגת העל"
-      }).catch(() => {});
-    }
-    this._recentEventMatches.set(key, true);
-    this.requestUpdate();
-    setTimeout(() => { this._recentEventMatches.delete(key); this.requestUpdate(); }, 5000);
+  set hass(hass) {
+    this._hass = hass;
+    const stateObj = hass.states[this._config.entity];
+    const newData = JSON.stringify(stateObj?.attributes?.fixtures || []);
+    if (newData === this._lastData) return;
+    this._lastData = newData;
+    this._updateCard(stateObj);
   }
 
   getCardSize() { return 3; }
@@ -74,250 +28,147 @@ class IsraeliPremierLeagueCard extends LitElement {
   }
 
   static getStubConfig() {
-    return {
-      entity: "sensor.lygt_h_l_mshkhqym_qrvbym",
-      title: "ליגת העל",
-      max_events_visible: 5,
-      max_events_total: 20,
-      show_finished_matches: true,
-      show_channels: true,
-      hide_header: false,
-    };
+    return { entity: "sensor.lygt_h_l_mshkhqym_qrvbym" };
   }
 
   _formatDate(dateStr) {
     if (!dateStr) return "";
     const [day, month, year] = dateStr.split("/");
-    const date     = new Date(`${year}-${month}-${day}`);
-    const today    = new Date(); today.setHours(0,0,0,0);
-    const tomorrow = new Date(); tomorrow.setDate(today.getDate()+1); tomorrow.setHours(0,0,0,0);
-    date.setHours(0,0,0,0);
-    if (date.getTime() === today.getTime())    return "היום";
-    if (date.getTime() === tomorrow.getTime()) return "מחר";
+    const d = new Date(`${year}-${month}-${day}`);
+    const today = new Date(); today.setHours(0,0,0,0);
+    const tom   = new Date(); tom.setDate(today.getDate()+1); tom.setHours(0,0,0,0);
+    d.setHours(0,0,0,0);
+    if (d.getTime() === today.getTime()) return "היום";
+    if (d.getTime() === tom.getTime())   return "מחר";
     const days = ["ראשון","שני","שלישי","רביעי","חמישי","שישי","שבת"];
-    return `יום ${days[date.getDay()]}׳ ${day}.${month}`;
+    return `יום ${days[d.getDay()]}׳ ${day}.${month}`;
   }
 
-  _isLive(s)     { return ["1H","2H","HT","ET","P"].includes(s); }
-  _isFinished(s) { return ["FT","AET","PEN"].includes(s); }
+  _updateCard(stateObj) {
+    const cfg     = this._config;
+    const maxVis  = parseInt(cfg.max_events_visible) || 5;
+    const maxTot  = parseInt(cfg.max_events_total)   || 20;
+    const showFin = cfg.show_finished_matches !== false;
+    const showCh  = cfg.show_channels !== false;
+    const hideHdr = cfg.hide_header === true;
+    const title   = cfg.title || "ליגת העל";
 
-  render() {
-    if (!this.hass || !this._config) return html``;
-
-    const stateObj = this.hass.states[this._config.entity];
-    if (!stateObj) return html`<ha-card><div class="error">Entity לא נמצא: ${this._config.entity}</div></ha-card>`;
-
-    let fixtures = (stateObj.attributes.fixtures || []).slice();
-    if (!this.showFinished) fixtures = fixtures.filter(f => !this._isFinished(f.status_short));
-    fixtures = fixtures.slice(0, this.maxEventsTotal);
-
-    const groups = {};
-    for (const f of fixtures) {
-      const k = f.match_date || "unknown";
-      if (!groups[k]) groups[k] = [];
-      groups[k].push(f);
+    if (!stateObj) {
+      this.innerHTML = `<ha-card style="padding:16px;color:red">Entity לא נמצא: ${cfg.entity}</ha-card>`;
+      return;
     }
 
-    const scrollHeight = this.maxEventsVisible * 130;
+    const LIVE     = ["1H","2H","HT","ET","P"];
+    const FINISHED = ["FT","AET","PEN"];
 
-    return html`
-      <ha-card>
-        ${this.hideHeader ? html`` : html`
-          <div class="card-header">
-            <span class="header-icon">⚽</span>
-            <span class="header-title">${this._config.title || "ליגת העל"}</span>
-            ${fixtures.length ? html`<span class="badge">${fixtures.length}</span>` : html``}
-          </div>
-        `}
-        <div class="scroll-content" style="max-height: ${scrollHeight}px; overflow-y: auto;">
-          ${fixtures.length === 0 ? html`<div class="empty">אין משחקים בימים הקרובים</div>` : html``}
-          ${Object.entries(groups).map(([date, games]) => html`
-            <div class="date-row">
-              <span class="date-label">${this._formatDate(date)}</span>
-            </div>
-            ${games.map((f, idx) => {
-              const key = `${f.home_team}_${f.away_team}`;
-              const isLive = this._isLive(f.status_short);
-              const isFinished = this._isFinished(f.status_short);
-              return html`
-                <div class="match-wrapper ${this._recentEventMatches.has(key) ? 'event-highlight' : ''}">
-                  <div class="match-row">
-                    <div class="team home">
-                      ${f.home_logo
-                        ? html`<img class="logo" src="${f.home_logo}" alt="${f.home_team}" onerror="this.style.display='none'">`
-                        : html`<div class="logo-ph">⚽</div>`}
-                      <span class="team-name">${f.home_team}</span>
-                    </div>
-                    <div class="center">
-                      ${isLive ? html`
-                        <div class="score live">${f.home_score ?? 0} - ${f.away_score ?? 0}</div>
-                        <div class="live-badge">● LIVE</div>
-                      ` : isFinished ? html`
-                        <div class="score finished">${f.home_score ?? 0} - ${f.away_score ?? 0}</div>
-                        <div class="status-label">${f.status}</div>
-                      ` : html`
-                        <div class="match-time">${f.match_time}</div>
-                        <div class="vs">נגד</div>
-                      `}
-                      ${this.showChannels && f.channels
-                        ? html`<div class="channels">📺 ${f.channels}</div>`
-                        : html``}
-                    </div>
-                    <div class="team away">
-                      ${f.away_logo
-                        ? html`<img class="logo" src="${f.away_logo}" alt="${f.away_team}" onerror="this.style.display='none'">`
-                        : html`<div class="logo-ph">⚽</div>`}
-                      <span class="team-name">${f.away_team}</span>
-                    </div>
-                  </div>
-                  ${idx < games.length - 1 ? html`<hr class="sep">` : html``}
-                </div>
-              `;
-            })}
-          `)}
-        </div>
-      </ha-card>
-    `;
-  }
+    let fixtures = (stateObj.attributes.fixtures || []).slice();
+    if (!showFin) fixtures = fixtures.filter(f => !FINISHED.includes(f.status_short));
+    fixtures = fixtures.slice(0, maxTot);
 
-  static get styles() {
-    return css`
-      :host {
-        direction: rtl;
-        font-family: 'Segoe UI', 'Arial Hebrew', Arial, sans-serif;
-      }
-      ha-card {
-        background: var(--ha-card-background, #1a1a2e);
-        border-radius: 16px;
-        overflow: hidden;
-        color: var(--primary-text-color, #eaeaea);
-        padding: 0;
-      }
-      .error { padding: 16px; color: red; }
-      .empty { padding: 32px; text-align: center; color: var(--secondary-text-color, #9ca3af); }
-      .card-header {
-        background: linear-gradient(135deg, #0f3460 0%, #16213e 100%);
-        padding: 13px 18px;
-        display: flex;
-        align-items: center;
-        gap: 10px;
-        border-bottom: 1px solid rgba(255,255,255,0.07);
-      }
-      .header-icon { font-size: 20px; }
-      .header-title { font-size: 15px; font-weight: 700; flex: 1; }
-      .badge {
-        background: #e94560;
-        color: white;
-        font-size: 11px;
-        font-weight: 700;
-        padding: 2px 9px;
-        border-radius: 100px;
-      }
-      .scroll-content { overflow-y: auto; }
-      .date-row {
-        display: flex;
-        align-items: center;
-        gap: 8px;
-        padding: 7px 16px 3px;
-      }
-      .date-row::before, .date-row::after {
-        content: '';
-        flex: 1;
-        height: 1px;
-        background: rgba(255,255,255,0.08);
-      }
-      .date-label {
-        font-size: 11px;
-        font-weight: 600;
-        color: var(--secondary-text-color, #6b7280);
-        letter-spacing: 0.7px;
-        white-space: nowrap;
-      }
-      .match-wrapper { padding: 0 4px; }
-      .match-row {
-        display: grid;
-        grid-template-columns: 1fr auto 1fr;
-        align-items: center;
-        padding: 11px 12px;
-        gap: 6px;
-        transition: background 0.15s;
-      }
-      .match-row:hover { background: rgba(255,255,255,0.04); }
-      @keyframes pulse-highlight {
-        0%   { box-shadow: 0 0 0 0 rgba(255,152,0,.7); }
-        50%  { box-shadow: 0 0 0 10px rgba(255,152,0,0); }
-        100% { box-shadow: none; }
-      }
-      .event-highlight { animation: pulse-highlight 0.6s ease-out; }
-      .sep { border: none; border-top: 1px solid rgba(255,255,255,0.06); margin: 0 12px; }
-      .team { display: flex; flex-direction: column; align-items: center; gap: 5px; min-width: 0; }
-      .logo { width: 40px; height: 40px; object-fit: contain; filter: drop-shadow(0 2px 4px rgba(0,0,0,0.5)); }
-      .logo-ph { width: 40px; height: 40px; display: flex; align-items: center; justify-content: center; font-size: 22px; }
-      .team-name { font-size: 12px; font-weight: 600; text-align: center; line-height: 1.3; max-width: 85px; word-break: break-word; }
-      .center { display: flex; flex-direction: column; align-items: center; gap: 3px; min-width: 80px; }
-      .match-time { font-size: 20px; font-weight: 700; color: #22c55e; letter-spacing: 1px; font-variant-numeric: tabular-nums; }
-      .vs { font-size: 10px; color: var(--secondary-text-color, #6b7280); }
-      .score { font-size: 22px; font-weight: 800; letter-spacing: 2px; font-variant-numeric: tabular-nums; }
-      .score.live { color: #22c55e; text-shadow: 0 0 12px rgba(34,197,94,.4); }
-      .score.finished { color: var(--secondary-text-color, #9ca3af); }
-      .live-badge { font-size: 10px; font-weight: 700; color: #22c55e; animation: blink 1.4s ease-in-out infinite; }
-      @keyframes blink { 0%,100% { opacity: 1; } 50% { opacity: 0.3; } }
-      .status-label { font-size: 10px; color: var(--secondary-text-color, #9ca3af); }
-      .channels { font-size: 10px; color: var(--secondary-text-color, #6b7280); text-align: center; white-space: nowrap; margin-top: 2px; }
-    `;
+    const groups = {};
+    fixtures.forEach(f => {
+      const k = f.match_date || "?";
+      if (!groups[k]) groups[k] = [];
+      groups[k].push(f);
+    });
+
+    let body = "";
+    Object.entries(groups).forEach(([date, games]) => {
+      body += `<div class="date-row"><span class="date-label">${this._formatDate(date)}</span></div>`;
+      games.forEach((f, idx) => {
+        const isLive = LIVE.includes(f.status_short);
+        const isDone = FINISHED.includes(f.status_short);
+        const center = isLive
+          ? `<div class="score live">${f.home_score??0} - ${f.away_score??0}</div><div class="live-badge">● LIVE</div>`
+          : isDone
+          ? `<div class="score done">${f.home_score??0} - ${f.away_score??0}</div><div class="status-txt">${f.status}</div>`
+          : `<div class="time">${f.match_time}</div><div class="vs">נגד</div>`;
+        const ch  = showCh && f.channels ? `<div class="ch">📺 ${f.channels}</div>` : "";
+        const hl  = f.home_logo ? `<img class="logo" src="${f.home_logo}" onerror="this.style.display='none'">` : "⚽";
+        const al  = f.away_logo ? `<img class="logo" src="${f.away_logo}" onerror="this.style.display='none'">` : "⚽";
+        const sep = idx < games.length-1 ? `<hr class="sep">` : "";
+        body += `<div class="mrow"><div class="team"><div class="logo-wrap">${hl}</div><span class="tname">${f.home_team}</span></div><div class="mid">${center}${ch}</div><div class="team"><div class="logo-wrap">${al}</div><span class="tname">${f.away_team}</span></div></div>${sep}`;
+      });
+    });
+
+    if (!fixtures.length) body = `<div class="empty">אין משחקים בימים הקרובים</div>`;
+
+    const header = hideHdr ? "" : `<div class="hdr"><span>⚽</span><span class="htitle">${title}</span>${fixtures.length ? `<span class="badge">${fixtures.length}</span>` : ""}</div>`;
+
+    if (!this._initialized) {
+      this._initialized = true;
+      this.innerHTML = `<ha-card><style>
+        :host{display:block;direction:rtl;font-family:'Segoe UI','Arial Hebrew',Arial,sans-serif;}
+        ha-card{background:var(--ha-card-background,#1a1a2e);border-radius:16px;overflow:hidden;color:var(--primary-text-color,#eaeaea);padding:0;display:block;}
+        .hdr{background:linear-gradient(135deg,#0f3460,#16213e);padding:13px 18px;display:flex;align-items:center;gap:10px;border-bottom:1px solid rgba(255,255,255,0.07);}
+        .htitle{font-size:15px;font-weight:700;flex:1;}
+        .badge{background:#e94560;color:white;font-size:11px;font-weight:700;padding:2px 9px;border-radius:100px;}
+        .scroll{overflow-y:auto;max-height:${maxVis*130}px;}
+        .empty{padding:32px;text-align:center;color:#9ca3af;}
+        .date-row{display:flex;align-items:center;gap:8px;padding:7px 16px 3px;}
+        .date-row::before,.date-row::after{content:'';flex:1;height:1px;background:rgba(255,255,255,0.08);}
+        .date-label{font-size:11px;font-weight:600;color:#6b7280;letter-spacing:.7px;white-space:nowrap;}
+        .mrow{display:grid;grid-template-columns:1fr auto 1fr;align-items:center;padding:11px 12px;gap:6px;}
+        .mrow:hover{background:rgba(255,255,255,0.04);}
+        .sep{border:none;border-top:1px solid rgba(255,255,255,0.06);margin:0 12px;}
+        .team{display:flex;flex-direction:column;align-items:center;gap:5px;}
+        .logo-wrap{width:40px;height:40px;display:flex;align-items:center;justify-content:center;font-size:22px;}
+        .logo{width:40px;height:40px;object-fit:contain;filter:drop-shadow(0 2px 4px rgba(0,0,0,0.5));}
+        .tname{font-size:12px;font-weight:600;text-align:center;line-height:1.3;max-width:85px;word-break:break-word;}
+        .mid{display:flex;flex-direction:column;align-items:center;gap:3px;min-width:80px;}
+        .time{font-size:20px;font-weight:700;color:#22c55e;letter-spacing:1px;}
+        .vs{font-size:10px;color:#6b7280;}
+        .score{font-size:22px;font-weight:800;letter-spacing:2px;}
+        .score.live{color:#22c55e;text-shadow:0 0 12px rgba(34,197,94,.4);}
+        .score.done{color:#9ca3af;}
+        .live-badge{font-size:10px;font-weight:700;color:#22c55e;animation:blink 1.4s infinite;}
+        @keyframes blink{0%,100%{opacity:1}50%{opacity:.3}}
+        .status-txt{font-size:10px;color:#9ca3af;}
+        .ch{font-size:10px;color:#6b7280;text-align:center;white-space:nowrap;margin-top:2px;}
+      </style>${header}<div class="scroll" id="ipl-scroll">${body}</div></ha-card>`;
+    } else {
+      const el = this.querySelector("#ipl-scroll");
+      if (el) el.innerHTML = body;
+    }
   }
 }
 
 customElements.define("israeli-premier-league-card", IsraeliPremierLeagueCard);
 
-class IsraeliPremierLeagueCardEditor extends LitElement {
-  static get properties() {
-    return {
-      _config: { type: Object },
-      hass: { type: Object },
-    };
+class IsraeliPremierLeagueCardEditor extends HTMLElement {
+  setConfig(config) {
+    this._config = { ...config };
+    this._render();
   }
 
-  setConfig(config) { this._config = { ...config }; }
+  set hass(h) {}
 
-  _changed(ev) {
-    if (!this._config) return;
-    const t = ev.target;
-    const val = t.type === "number" ? parseInt(t.value, 10)
-              : t.checked !== undefined ? t.checked
-              : t.value;
-    const cfg = { ...this._config, [t.configValue]: val };
-    this.dispatchEvent(new CustomEvent("config-changed", { detail: { config: cfg }, bubbles: true, composed: true }));
+  _fire() {
+    this.dispatchEvent(new CustomEvent("config-changed", { detail: { config: this._config }, bubbles: true, composed: true }));
   }
 
-  _entityChanged(ev) {
-    const cfg = { ...this._config, entity: ev.target.value };
-    this.dispatchEvent(new CustomEvent("config-changed", { detail: { config: cfg }, bubbles: true, composed: true }));
-  }
-
-  render() {
-    if (!this._config) return html``;
+  _render() {
     const c = this._config;
-    return html`
-      <div style="direction:rtl; display:flex; flex-direction:column; gap:14px;">
-        <ha-textfield label="Entity ID" .value=${c.entity || ""} @change=${this._entityChanged}></ha-textfield>
-        <ha-textfield label="כותרת" .value=${c.title || "ליגת העל"} .configValue=${"title"} @change=${this._changed}></ha-textfield>
-        <ha-textfield label="משחקים גלויים" type="number" .value=${c.max_events_visible || 5} .configValue=${"max_events_visible"} @change=${this._changed}></ha-textfield>
-        <ha-textfield label="סך משחקים" type="number" .value=${c.max_events_total || 20} .configValue=${"max_events_total"} @change=${this._changed}></ha-textfield>
-        <div style="display:flex;align-items:center;justify-content:space-between;">
-          <label>הצג משחקים שהסתיימו</label>
-          <ha-switch .checked=${c.show_finished_matches !== false} .configValue=${"show_finished_matches"} @change=${this._changed}></ha-switch>
-        </div>
-        <div style="display:flex;align-items:center;justify-content:space-between;">
-          <label>הצג ערוצי שידור</label>
-          <ha-switch .checked=${c.show_channels !== false} .configValue=${"show_channels"} @change=${this._changed}></ha-switch>
-        </div>
-        <div style="display:flex;align-items:center;justify-content:space-between;">
-          <label>הסתר כותרת</label>
-          <ha-switch .checked=${c.hide_header === true} .configValue=${"hide_header"} @change=${this._changed}></ha-switch>
-        </div>
-      </div>
-    `;
+    this.innerHTML = `<div style="direction:rtl;display:flex;flex-direction:column;gap:12px;padding:4px;">
+      <div><label style="font-size:12px;color:#888;">Entity ID</label>
+        <input id="f-entity" type="text" value="${c.entity||''}" style="width:100%;padding:8px;border-radius:6px;border:1px solid #444;background:#222;color:#fff;font-size:13px;box-sizing:border-box;"></div>
+      <div><label style="font-size:12px;color:#888;">כותרת</label>
+        <input id="f-title" type="text" value="${c.title||'ליגת העל'}" style="width:100%;padding:8px;border-radius:6px;border:1px solid #444;background:#222;color:#fff;font-size:13px;box-sizing:border-box;"></div>
+      <div><label style="font-size:12px;color:#888;">משחקים גלויים (ללא גלילה)</label>
+        <input id="f-vis" type="number" min="1" max="20" value="${c.max_events_visible||5}" style="width:100%;padding:8px;border-radius:6px;border:1px solid #444;background:#222;color:#fff;font-size:13px;box-sizing:border-box;"></div>
+      <div><label style="font-size:12px;color:#888;">סך משחקים (עם גלילה)</label>
+        <input id="f-tot" type="number" min="1" max="50" value="${c.max_events_total||20}" style="width:100%;padding:8px;border-radius:6px;border:1px solid #444;background:#222;color:#fff;font-size:13px;box-sizing:border-box;"></div>
+      <label style="display:flex;align-items:center;gap:8px;cursor:pointer;"><input id="f-fin" type="checkbox" ${c.show_finished_matches!==false?'checked':''}><span style="font-size:13px;">הצג משחקים שהסתיימו</span></label>
+      <label style="display:flex;align-items:center;gap:8px;cursor:pointer;"><input id="f-ch" type="checkbox" ${c.show_channels!==false?'checked':''}><span style="font-size:13px;">הצג ערוצי שידור</span></label>
+      <label style="display:flex;align-items:center;gap:8px;cursor:pointer;"><input id="f-hdr" type="checkbox" ${c.hide_header?'checked':''}><span style="font-size:13px;">הסתר כותרת</span></label>
+    </div>`;
+    this.querySelector("#f-entity").addEventListener("change", e => { this._config.entity = e.target.value; this._fire(); });
+    this.querySelector("#f-title").addEventListener("change",  e => { this._config.title  = e.target.value; this._fire(); });
+    this.querySelector("#f-vis").addEventListener("change",    e => { this._config.max_events_visible = parseInt(e.target.value); this._fire(); });
+    this.querySelector("#f-tot").addEventListener("change",    e => { this._config.max_events_total   = parseInt(e.target.value); this._fire(); });
+    this.querySelector("#f-fin").addEventListener("change",    e => { this._config.show_finished_matches = e.target.checked; this._fire(); });
+    this.querySelector("#f-ch").addEventListener("change",     e => { this._config.show_channels = e.target.checked; this._fire(); });
+    this.querySelector("#f-hdr").addEventListener("change",    e => { this._config.hide_header   = e.target.checked; this._fire(); });
   }
 }
 
@@ -327,6 +178,6 @@ window.customCards = window.customCards || [];
 window.customCards.push({
   type: "israeli-premier-league-card",
   name: "Israeli Premier League Card",
-  description: "כרטיס משחקי ליגת העל הישראלית עם לוגואים, שעות ועדכון חי",
+  description: "כרטיס משחקי ליגת העל הישראלית",
   preview: true,
 });
