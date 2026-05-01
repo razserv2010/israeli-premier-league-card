@@ -1,5 +1,4 @@
-const LitElement = Object.getPrototypeOf(customElements.get("ha-panel-lovelace") || customElements.get("home-assistant"));
-const { html, css } = LitElement.prototype.constructor;
+import { LitElement, html, css } from "lit";
 
 class IsraeliPremierLeagueCard extends LitElement {
   static get properties() {
@@ -234,7 +233,7 @@ class IsraeliPremierLeagueCard extends LitElement {
         letter-spacing: 0.7px;
         white-space: nowrap;
       }
-      .match-wrapper { padding: 0 4px; margin-bottom: 4px; }
+      .match-wrapper { padding: 0 4px; }
       .match-row {
         display: grid;
         grid-template-columns: 1fr auto 1fr;
@@ -270,8 +269,6 @@ class IsraeliPremierLeagueCard extends LitElement {
 }
 
 customElements.define("israeli-premier-league-card", IsraeliPremierLeagueCard);
-
-// ─── Editor ──────────────────────────────────────────────────────────────────
 
 class IsraeliPremierLeagueCardEditor extends LitElement {
   static get properties() {
