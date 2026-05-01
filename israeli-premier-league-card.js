@@ -156,7 +156,7 @@ class IsraeliPremierLeagueCard extends HTMLElement {
       /* תאריך */
       .date-row{display:flex;align-items:center;gap:8px;padding:8px 16px 4px;}
       .date-row::before,.date-row::after{content:'';flex:1;height:1px;background:rgba(255,255,255,0.06);}
-      .date-label{font-size:10px;font-weight:600;color:#475569;letter-spacing:1px;white-space:nowrap;text-transform:uppercase;}
+      .date-label{font-size:12px;font-weight:700;color:#94a3b8;letter-spacing:0.5px;white-space:nowrap;}
 
       /* שורת משחק */
       .match{position:relative;display:grid;grid-template-columns:1fr 70px 1fr;align-items:center;padding:12px 16px 12px 20px;gap:6px;border-right:2px solid transparent;transition:background 0.2s;}
@@ -176,23 +176,23 @@ class IsraeliPremierLeagueCard extends HTMLElement {
       .team{display:flex;flex-direction:column;align-items:center;gap:5px;}
       .logo{width:38px;height:38px;object-fit:contain;filter:drop-shadow(0 2px 6px rgba(0,0,0,0.5));}
       .logo-ph{width:38px;height:38px;display:flex;align-items:center;justify-content:center;font-size:20px;}
-      .tname{font-size:11px;font-weight:500;text-align:center;line-height:1.3;max-width:80px;color:#cbd5e1;}
+      .tname{font-size:12px;font-weight:600;text-align:center;line-height:1.3;max-width:80px;color:#cbd5e1;}
 
       /* מרכז */
       .mid{display:flex;flex-direction:column;align-items:center;gap:3px;}
-      .time{font-size:19px;font-weight:700;letter-spacing:1px;font-variant-numeric:tabular-nums;}
+      .time{font-size:22px;font-weight:700;letter-spacing:1px;font-variant-numeric:tabular-nums;}
       .time-normal{color:#60a5fa;}
       .time-soon{color:#fbbf24;}
-      .vs{font-size:9px;color:#334155;}
-      .score{font-size:21px;font-weight:800;letter-spacing:2px;font-variant-numeric:tabular-nums;}
+      .vs{font-size:12px;color:#64748b;font-weight:500;}
+      .score{font-size:24px;font-weight:800;letter-spacing:2px;font-variant-numeric:tabular-nums;}
       .score-live{color:#4ade80;text-shadow:0 0 16px rgba(74,222,128,0.4);}
       .score-done{color:#475569;}
-      .tag{font-size:9px;font-weight:700;}
+      .tag{font-size:11px;font-weight:700;}
       .tag-live{color:#4ade80;animation:blink 1.3s infinite;}
       .tag-soon{color:#fbbf24;}
       .tag-done{color:#475569;}
       @keyframes blink{0%,100%{opacity:1;}50%{opacity:.2;}}
-      .ch{font-size:9px;color:#334155;text-align:center;margin-top:3px;white-space:nowrap;}
+      .ch{font-size:11px;color:#64748b;text-align:center;margin-top:4px;white-space:nowrap;}
     `;
 
     if (!this._initialized) {
@@ -230,23 +230,23 @@ class IsraeliPremierLeagueCardEditor extends HTMLElement {
       <div style="direction:rtl;display:flex;flex-direction:column;gap:12px;padding:4px;">
         <div>
           <label style="font-size:12px;color:var(--secondary-text-color);">Entity ID</label>
-          <input id="f-entity" type="text" value="${c.entity||''}" style="width:100%;padding:8px;border-radius:6px;border:1px solid var(--divider-color);background:var(--card-background-color);color:var(--primary-text-color);font-size:13px;box-sizing:border-box;">
+          <input id="f-entity" type="text" value="${c.entity||''}" style="width:100%;padding:8px;border-radius:6px;border:1px solid var(--divider-color,#ccc);background:var(--input-fill-color,var(--secondary-background-color,#f5f5f5));color:var(--primary-text-color,#212121);font-size:13px;box-sizing:border-box;">
         </div>
         <div>
           <label style="font-size:12px;color:var(--secondary-text-color);">כותרת</label>
-          <input id="f-title" type="text" value="${c.title||'ליגת העל'}" style="width:100%;padding:8px;border-radius:6px;border:1px solid var(--divider-color);background:var(--card-background-color);color:var(--primary-text-color);font-size:13px;box-sizing:border-box;">
+          <input id="f-title" type="text" value="${c.title||'ליגת העל'}" style="width:100%;padding:8px;border-radius:6px;border:1px solid var(--divider-color,#ccc);background:var(--input-fill-color,var(--secondary-background-color,#f5f5f5));color:var(--primary-text-color,#212121);font-size:13px;box-sizing:border-box;">
         </div>
         <div>
           <label style="font-size:12px;color:var(--secondary-text-color);">משחקים גלויים (ללא גלילה)</label>
-          <input id="f-vis" type="number" min="1" max="20" value="${c.max_events_visible||5}" style="width:100%;padding:8px;border-radius:6px;border:1px solid var(--divider-color);background:var(--card-background-color);color:var(--primary-text-color);font-size:13px;box-sizing:border-box;">
+          <input id="f-vis" type="number" min="1" max="20" value="${c.max_events_visible||5}" style="width:100%;padding:8px;border-radius:6px;border:1px solid var(--divider-color,#ccc);background:var(--input-fill-color,var(--secondary-background-color,#f5f5f5));color:var(--primary-text-color,#212121);font-size:13px;box-sizing:border-box;">
         </div>
         <div>
           <label style="font-size:12px;color:var(--secondary-text-color);">סך משחקים (עם גלילה)</label>
-          <input id="f-tot" type="number" min="1" max="50" value="${c.max_events_total||20}" style="width:100%;padding:8px;border-radius:6px;border:1px solid var(--divider-color);background:var(--card-background-color);color:var(--primary-text-color);font-size:13px;box-sizing:border-box;">
+          <input id="f-tot" type="number" min="1" max="50" value="${c.max_events_total||20}" style="width:100%;padding:8px;border-radius:6px;border:1px solid var(--divider-color,#ccc);background:var(--input-fill-color,var(--secondary-background-color,#f5f5f5));color:var(--primary-text-color,#212121);font-size:13px;box-sizing:border-box;">
         </div>
         <div>
           <label style="font-size:12px;color:var(--secondary-text-color);">הדגש משחק X דקות לפני (ברירת מחדל: 60)</label>
-          <input id="f-soon" type="number" min="10" max="240" value="${c.soon_minutes||60}" style="width:100%;padding:8px;border-radius:6px;border:1px solid var(--divider-color);background:var(--card-background-color);color:var(--primary-text-color);font-size:13px;box-sizing:border-box;">
+          <input id="f-soon" type="number" min="10" max="240" value="${c.soon_minutes||60}" style="width:100%;padding:8px;border-radius:6px;border:1px solid var(--divider-color,#ccc);background:var(--input-fill-color,var(--secondary-background-color,#f5f5f5));color:var(--primary-text-color,#212121);font-size:13px;box-sizing:border-box;">
         </div>
         <label style="display:flex;align-items:center;gap:8px;cursor:pointer;">
           <input id="f-fin" type="checkbox" ${c.show_finished_matches!==false?'checked':''}>
