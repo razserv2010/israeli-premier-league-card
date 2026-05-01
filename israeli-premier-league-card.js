@@ -243,4 +243,230 @@ class IsraeliPremierLeagueCard extends LitElement {
         align-items: center;
         padding: 11px 12px;
         gap: 6px;
-        transition: backgr
+        transition: background 0.15s;
+      }
+      .match-row:hover { background: rgba(255,255,255,0.04); }
+      .highlight { animation: pulse-highlight 0.7s ease-out; }
+      @keyframes pulse-highlight {
+        0%   { box-shadow: 0 0 0 0 rgba(255,152,0,.7); }
+        50%  { box-shadow: 0 0 0 8px rgba(255,152,0,0); }
+        100% { box-shadow: none; }
+      }
+      .sep {
+        border: none;
+        border-top: 1px solid rgba(255,255,255,0.06);
+        margin: 0 12px;
+      }
+      .team {
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        gap: 5px;
+        min-width: 0;
+      }
+      .logo {
+        width: 40px;
+        height: 40px;
+        object-fit: contain;
+        filter: drop-shadow(0 2px 4px rgba(0,0,0,0.5));
+      }
+      .logo-ph {
+        width: 40px;
+        height: 40px;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        font-size: 22px;
+      }
+      .team-name {
+        font-size: 12px;
+        font-weight: 600;
+        text-align: center;
+        line-height: 1.3;
+        max-width: 85px;
+        word-break: break-word;
+      }
+      .center {
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        gap: 3px;
+        min-width: 80px;
+      }
+      .match-time {
+        font-size: 20px;
+        font-weight: 700;
+        color: #22c55e;
+        letter-spacing: 1px;
+        font-variant-numeric: tabular-nums;
+      }
+      .vs { font-size: 10px; color: var(--secondary-text-color, #6b7280); }
+      .score {
+        font-size: 22px;
+        font-weight: 800;
+        letter-spacing: 2px;
+        font-variant-numeric: tabular-nums;
+      }
+      .score.live {
+        color: #22c55e;
+        text-shadow: 0 0 12px rgba(34,197,94,.4);
+      }
+      .score.finished { color: var(--secondary-text-color, #9ca3af); }
+      .live-badge {
+        font-size: 10px;
+        font-weight: 700;
+        color: #22c55e;
+        animation: blink 1.4s ease-in-out infinite;
+      }
+      @keyframes blink {
+        0%,100% { opacity: 1; }
+        50%      { opacity: 0.3; }
+      }
+      .status-label { font-size: 10px; color: var(--secondary-text-color, #9ca3af); }
+      .channels {
+        font-size: 10px;
+        color: var(--secondary-text-color, #6b7280);
+        text-align: center;
+        white-space: nowrap;
+        margin-top: 2px;
+      }
+    `;
+  }
+}
+
+customElements.define("israeli-premier-league-card", IsraeliPremierLeagueCard);
+
+// ─── Editor ──────────────────────────────────────────────────────────────────
+
+class IsraeliPremierLeagueCardEditor extends LitElement {
+  static get properties() {
+    return {
+      _config: { type: Object },
+      hass:    { type: Object },
+      entities: { type: Array },
+    };
+  }
+
+  constructor() {
+    super();
+    this.entities = [];
+  }
+
+  static get styles() {
+    return css`
+      .card-config { display: flex; flex-direction: column; gap: 16px; }
+      .option { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
+      ha-select, ha-textfield { width: 100%; }
+      label { font-size: 14px; }
+    `;
+  }
+
+  setConfig(config) {
+    this._config = { ...config };
+  }
+
+  updated(props) {
+    if (props.has("hass")) {
+      this.entities = Object.keys(this.hass.states)
+        .filter(e => e.startsWith("sensor.ligat_haal") || e.includes("premier_league"))
+        .sort();
+    }
+  }
+
+  _changed(ev) {
+    if (!this._config) return;
+    const t = ev.target;
+    const val = t.type === "number" ? parseInt(t.value, 10)
+              : t.checked !== undefined ? t.checked
+              : t.value;
+    const cfg = { ...this._config, [t.configValue]: val };
+    this.dispatchEvent(new CustomEvent("config-changed", { detail: { config: cfg }, bubbles: true, composed: true }));
+  }
+
+  _entityChanged(ev) {
+    const cfg = { ...this._config, entity: ev.target.value };
+    this.dispatchEvent(new CustomEvent("config-changed", { detail: { config: cfg }, bubbles: true, composed: true }));
+  }
+
+  render() {
+    if (!this._config || !this.hass) return html``;
+    return html`
+      <div class="card-config">
+        <h3>סנסור:</h3>
+        <ha-select
+          naturalMenuWidth fixedMenuPosition
+          label="Entity"
+          .value=${this._config.entity || ""}
+          @change=${this._entityChanged}
+          @closed=${e => e.stopPropagation()}
+        >
+          ${this.entities.map(e => html`<ha-list-item .value=${e}>${e}</ha-list-item>`)}
+        </ha-select>
+
+        <ha-textfield
+          label="כותרת"
+          .value=${this._config.title || "ליגת העל"}
+          .configValue=${"title"}
+          @change=${this._changed}
+        ></ha-textfield>
+
+        <h3>הגדרות:</h3>
+
+        <div class="option">
+          <ha-switch
+            .checked=${this._config.hide_header === true}
+            .configValue=${"hide_header"}
+            @change=${this._changed}
+          ></ha-switch>
+          <label>הסתר כותרת</label>
+        </div>
+
+        <div class="option">
+          <ha-switch
+            .checked=${this._config.show_finished_matches !== false}
+            .configValue=${"show_finished_matches"}
+            @change=${this._changed}
+          ></ha-switch>
+          <label>הצג משחקים שהסתיימו</label>
+        </div>
+
+        <div class="option">
+          <ha-switch
+            .checked=${this._config.show_channels !== false}
+            .configValue=${"show_channels"}
+            @change=${this._changed}
+          ></ha-switch>
+          <label>הצג ערוצי שידור</label>
+        </div>
+
+        <ha-textfield
+          label="משחקים גלויים (ללא גלילה)"
+          type="number"
+          .value=${this._config.max_events_visible || 5}
+          .configValue=${"max_events_visible"}
+          @change=${this._changed}
+        ></ha-textfield>
+
+        <ha-textfield
+          label="סך משחקים (עם גלילה)"
+          type="number"
+          .value=${this._config.max_events_total || 20}
+          .configValue=${"max_events_total"}
+          @change=${this._changed}
+        ></ha-textfield>
+      </div>
+    `;
+  }
+}
+
+customElements.define("israeli-premier-league-card-editor", IsraeliPremierLeagueCardEditor);
+
+// ─── HACS registration ───────────────────────────────────────────────────────
+
+window.customCards = window.customCards || [];
+window.customCards.push({
+  type: "israeli-premier-league-card",
+  name: "Israeli Premier League Card",
+  description: "כרטיס משחקי ליגת העל הישראלית עם לוגואים, שעות ועדכון חי",
+  preview: true,
+});
