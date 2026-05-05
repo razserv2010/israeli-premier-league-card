@@ -3,6 +3,7 @@ class IsraeliPremierLeagueCard extends HTMLElement {
     super();
     this._initialized = false;
     this._lastData = null;
+    this._reminders = new Set(); // fixture_ids שסומנו לתזכורת
   }
 
   setConfig(config) {
@@ -20,14 +21,8 @@ class IsraeliPremierLeagueCard extends HTMLElement {
   }
 
   getCardSize() { return 3; }
-
-  static getConfigElement() {
-    return document.createElement("israeli-premier-league-card-editor");
-  }
-
-  static getStubConfig() {
-    return { entity: "sensor.lygt_h_l_mshkhqym_qrvbym" };
-  }
+  static getConfigElement() { return document.createElement("israeli-premier-league-card-editor"); }
+  static getStubConfig() { return { entity: "sensor.lygt_h_l_mshkhqym_qrvbym" }; }
 
   _formatDate(dateStr) {
     if (!dateStr) return "";
@@ -45,7 +40,7 @@ class IsraeliPremierLeagueCard extends HTMLElement {
   _isLive(s)  { return ["1H","2H","ET","P","In Progress"].includes(s); }
   _isHalf(s)  { return ["HT","Halftime"].includes(s); }
   _isDone(s)  { return ["FT","AET","PEN","Match Finished","הסתיים"].includes(s); }
-  _isSoon(f, mins) {
+  _isSoon(f)  {
     if (!f.match_time || !f.match_date) return false;
     if (this._isLive(f.status_short) || this._isHalf(f.status_short) || this._isDone(f.status_short)) return false;
     try {
@@ -65,7 +60,90 @@ class IsraeliPremierLeagueCard extends HTMLElement {
     return "LIVE";
   }
 
+  // קרא את רשימת התזכורות מ-input_text
+  _loadReminders() {
+    if (!this._hass) return;
+    const stateObj = this._hass.states["input_text.ligat_haal_reminders"];
+    if (!stateObj || !stateObj.state || stateObj.state === "unknown") return;
+    try {
+      const data = JSON.parse(stateObj.state);
+      this._reminders = new Set(data.map(r => r.fixture_id));
+    } catch(e) { this._reminders = new Set(); }
+  }
+
+  // שמור רשימת תזכורות ל-input_text
+  async _saveReminders(remindersArray) {
+    if (!this._hass) return;
+    await this._hass.callService("input_text", "set_value", {
+      entity_id: "input_text.ligat_haal_reminders",
+      value: JSON.stringify(remindersArray),
+    });
+  }
+
+  // הוסף תזכורת למשחק
+  async _addReminder(f) {
+    if (!this._hass) return;
+
+    // קרא רשימה קיימת
+    const stateObj = this._hass.states["input_text.ligat_haal_reminders"];
+    let current = [];
+    try {
+      if (stateObj && stateObj.state && stateObj.state !== "unknown") {
+        current = JSON.parse(stateObj.state);
+      }
+    } catch(e) {}
+
+    // בדוק אם כבר קיים
+    const exists = current.find(r => r.fixture_id === f.fixture_id);
+    if (exists) {
+      // הסר תזכורת
+      current = current.filter(r => r.fixture_id !== f.fixture_id);
+      this._reminders.delete(f.fixture_id);
+      await this._saveReminders(current);
+      this._showToast(`🔕 תזכורת בוטלה — ${f.home_team} נגד ${f.away_team}`, "#ef4444");
+    } else {
+      // הוסף תזכורת
+      current.push({
+        fixture_id: f.fixture_id,
+        home_team: f.home_team,
+        away_team: f.away_team,
+        match_date: f.match_date,
+        match_time: f.match_time,
+        venue: f.venue || "",
+      });
+      this._reminders.add(f.fixture_id);
+      await this._saveReminders(current);
+      this._showToast(`🔔 תזכורת נקבעה — ${f.home_team} נגד ${f.away_team}\nשעה / חצי שעה / 10 דק׳ לפני`, "#22c55e");
+    }
+
+    // עדכן כפתור
+    const btn = this.querySelector(`[data-fixture-id="${f.fixture_id}"]`);
+    if (btn) {
+      btn.textContent = this._reminders.has(f.fixture_id) ? "🔔" : "🔕";
+      btn.style.opacity = this._reminders.has(f.fixture_id) ? "1" : "0.4";
+    }
+  }
+
+  _showToast(msg, color) {
+    const toast = document.createElement("div");
+    toast.style.cssText = `
+      position:fixed;bottom:24px;left:50%;transform:translateX(-50%);
+      background:${color};color:white;
+      padding:12px 20px;border-radius:12px;
+      font-size:13px;font-weight:600;
+      z-index:99999;direction:rtl;text-align:center;
+      box-shadow:0 4px 20px rgba(0,0,0,0.3);
+      max-width:280px;line-height:1.5;
+      white-space:pre-line;
+    `;
+    toast.textContent = msg;
+    document.body.appendChild(toast);
+    setTimeout(() => toast.remove(), 3000);
+  }
+
   _updateCard(stateObj) {
+    this._loadReminders();
+
     const cfg     = this._config;
     const maxVis  = parseInt(cfg.max_events_visible) || 5;
     const maxTot  = parseInt(cfg.max_events_total)   || 20;
@@ -96,7 +174,6 @@ class IsraeliPremierLeagueCard extends HTMLElement {
     const dateKeys = Object.keys(groups);
     dateKeys.forEach((date, dateIdx) => {
       const games = groups[date];
-      // הפרדת ימים — קו עבה יותר בין ימים שונים
       body += `
         <div class="date-section ${dateIdx > 0 ? 'date-section-gap' : ''}">
           <div class="date-row">
@@ -111,6 +188,8 @@ class IsraeliPremierLeagueCard extends HTMLElement {
         const isHalf = this._isHalf(f.status_short);
         const isDone = this._isDone(f.status_short);
         const isSoon = this._isSoon(f);
+        const canRemind = !isLive && !isHalf && !isDone;
+        const hasReminder = this._reminders.has(f.fixture_id);
 
         const rowCls = (isLive || isHalf) ? "mrow live-row"
                      : isSoon             ? "mrow soon-row"
@@ -123,21 +202,13 @@ class IsraeliPremierLeagueCard extends HTMLElement {
 
         let center = "";
         if (isLive || isHalf) {
-          center = `
-            <div class="score score-live">${f.home_score??0} - ${f.away_score??0}</div>
-            <div class="live-pill">${this._liveLabel(f.status_short)}</div>`;
+          center = `<div class="score score-live">${f.home_score??0} - ${f.away_score??0}</div><div class="live-pill">${this._liveLabel(f.status_short)}</div>`;
         } else if (isDone) {
-          center = `
-            <div class="score score-done">${f.home_score??0} - ${f.away_score??0}</div>
-            <div class="tag tag-done">הסתיים</div>`;
+          center = `<div class="score score-done">${f.home_score??0} - ${f.away_score??0}</div><div class="tag tag-done">הסתיים</div>`;
         } else if (isSoon) {
-          center = `
-            <div class="time time-soon">${f.match_time}</div>
-            <div class="tag tag-soon">🔜 בקרוב</div>`;
+          center = `<div class="time time-soon">${f.match_time}</div><div class="tag tag-soon">🔜 בקרוב</div>`;
         } else {
-          center = `
-            <div class="time time-normal">${f.match_time}</div>
-            <div class="vs">נגד</div>`;
+          center = `<div class="time time-normal">${f.match_time}</div><div class="vs">נגד</div>`;
         }
 
         const ch = showCh && f.channels ? `<div class="ch">📺 ${f.channels}</div>` : "";
@@ -145,12 +216,17 @@ class IsraeliPremierLeagueCard extends HTMLElement {
         const al = f.away_logo ? `<img class="logo" src="${f.away_logo}" onerror="this.style.display='none'">` : `<div class="logo-ph">⚽</div>`;
         const sep = idx < games.length-1 ? `<hr class="sep">` : "";
 
+        const reminderBtn = canRemind
+          ? `<button class="remind-btn" data-fixture-id="${f.fixture_id}" style="opacity:${hasReminder?'1':'0.35'}" title="${hasReminder?'בטל תזכורת':'הגדר תזכורת'}">${hasReminder?'🔔':'🔕'}</button>`
+          : `<div style="width:28px;"></div>`;
+
         body += `
           <div class="${rowCls}">
             ${dot}
             <div class="team">${hl}<span class="tname">${f.home_team}</span></div>
             <div class="mid">${center}${ch}</div>
             <div class="team">${al}<span class="tname">${f.away_team}</span></div>
+            ${reminderBtn}
           </div>${sep}`;
       });
     });
@@ -171,8 +247,6 @@ class IsraeliPremierLeagueCard extends HTMLElement {
     const styles = `
       :host{display:block;direction:rtl;font-family:'Segoe UI','Arial Hebrew',Arial,sans-serif;}
       ha-card{background:#0f172a;border-radius:16px;overflow:hidden;color:#e2e8f0;padding:0;display:block;box-shadow:0 8px 32px rgba(0,0,0,0.4);}
-
-      /* כותרת */
       .hdr{background:linear-gradient(90deg,#1e3a5f,#0f172a);padding:14px 18px;display:flex;align-items:center;gap:10px;position:relative;overflow:hidden;}
       .hdr::after{content:'';position:absolute;bottom:0;left:0;right:0;height:1px;background:linear-gradient(90deg,#3b82f6,transparent);}
       .hdr-flag{font-size:20px;}
@@ -180,63 +254,50 @@ class IsraeliPremierLeagueCard extends HTMLElement {
       .live-count{font-size:11px;color:#4ade80;background:rgba(74,222,128,0.12);padding:3px 10px;border-radius:20px;border:1px solid rgba(74,222,128,0.25);font-weight:600;animation:pulse-live 2s infinite;}
       .total-count{font-size:11px;color:#60a5fa;background:rgba(96,165,250,0.1);padding:3px 10px;border-radius:20px;border:1px solid rgba(96,165,250,0.2);}
       @keyframes pulse-live{0%,100%{opacity:1;}50%{opacity:0.7;}}
-
-      /* גלילה */
       .scroll{overflow-y:auto;max-height:${maxVis*145}px;}
       .empty{padding:32px;text-align:center;color:#475569;}
-
-      /* הפרדת ימים */
       .date-section{padding:0;}
       .date-section-gap{margin-top:4px;border-top:2px solid rgba(96,165,250,0.15);}
       .date-row{display:flex;align-items:center;gap:8px;padding:10px 16px 4px;}
       .date-line{flex:1;height:1px;background:rgba(255,255,255,0.06);}
-      .date-label{font-size:12px;font-weight:700;color:#60a5fa;white-space:nowrap;letter-spacing:0.3px;}
-
-      /* שורת משחק */
-      .mrow{position:relative;display:grid;grid-template-columns:1fr 80px 1fr;align-items:center;padding:12px 16px 12px 22px;gap:6px;border-right:2px solid transparent;transition:background 0.2s;}
+      .date-label{font-size:12px;font-weight:700;color:#60a5fa;white-space:nowrap;}
+      .mrow{position:relative;display:grid;grid-template-columns:1fr 80px 1fr 28px;align-items:center;padding:12px 10px 12px 22px;gap:6px;border-right:2px solid transparent;transition:background 0.2s;}
       .mrow:hover{background:rgba(255,255,255,0.03);}
       .live-row{background:rgba(74,222,128,0.06);border-right:2px solid #4ade80;}
       .soon-row{background:rgba(167,139,250,0.06);border-right:2px solid #a78bfa;}
       .done-row{opacity:0.45;}
       .sep{border:none;border-top:1px solid rgba(255,255,255,0.04);margin:0 16px;}
-
-      /* אינדיקטור */
       .indicator{position:absolute;top:14px;right:7px;width:6px;height:6px;border-radius:50%;}
       .ind-live{background:#4ade80;animation:blink-dot 1s infinite;}
       .ind-soon{background:#a78bfa;animation:blink-dot 1.5s infinite;}
       @keyframes blink-dot{0%,100%{opacity:1;transform:scale(1);}50%{opacity:.4;transform:scale(1.5);}}
-
-      /* קבוצות */
       .team{display:flex;flex-direction:column;align-items:center;gap:5px;}
-      .logo{width:40px;height:40px;object-fit:contain;filter:drop-shadow(0 2px 6px rgba(0,0,0,0.5));}
-      .logo-ph{width:40px;height:40px;display:flex;align-items:center;justify-content:center;font-size:22px;}
-      .tname{font-size:12px;font-weight:600;text-align:center;line-height:1.3;max-width:82px;color:#cbd5e1;}
-
-      /* מרכז */
+      .logo{width:38px;height:38px;object-fit:contain;filter:drop-shadow(0 2px 6px rgba(0,0,0,0.5));}
+      .logo-ph{width:38px;height:38px;display:flex;align-items:center;justify-content:center;font-size:20px;}
+      .tname{font-size:11px;font-weight:600;text-align:center;line-height:1.3;max-width:78px;color:#cbd5e1;}
       .mid{display:flex;flex-direction:column;align-items:center;gap:3px;}
-      .time{font-size:22px;font-weight:700;letter-spacing:1px;font-variant-numeric:tabular-nums;}
+      .time{font-size:21px;font-weight:700;letter-spacing:1px;font-variant-numeric:tabular-nums;}
       .time-normal{color:#a78bfa;}
       .time-soon{color:#a78bfa;opacity:0.8;}
       .vs{font-size:11px;color:#475569;font-weight:500;}
-      .score{font-size:24px;font-weight:800;letter-spacing:2px;font-variant-numeric:tabular-nums;}
+      .score{font-size:23px;font-weight:800;letter-spacing:2px;font-variant-numeric:tabular-nums;}
       .score-live{color:#4ade80;text-shadow:0 0 16px rgba(74,222,128,0.4);}
       .score-done{color:#475569;}
-
-      /* LIVE pill */
-      .live-pill{
-        font-size:10px;font-weight:700;color:#4ade80;
-        background:rgba(74,222,128,0.12);
-        border:1px solid rgba(74,222,128,0.3);
-        padding:2px 8px;border-radius:20px;
-        animation:blink 1.4s infinite;
-        white-space:nowrap;
-      }
+      .live-pill{font-size:10px;font-weight:700;color:#4ade80;background:rgba(74,222,128,0.12);border:1px solid rgba(74,222,128,0.3);padding:2px 8px;border-radius:20px;animation:blink 1.4s infinite;white-space:nowrap;}
       @keyframes blink{0%,100%{opacity:1;}50%{opacity:.4;}}
-
       .tag{font-size:10px;font-weight:700;}
       .tag-soon{color:#a78bfa;}
       .tag-done{color:#475569;}
       .ch{font-size:10px;color:#475569;text-align:center;margin-top:4px;white-space:nowrap;}
+      .remind-btn{
+        background:none;border:none;cursor:pointer;
+        font-size:16px;padding:4px;border-radius:6px;
+        transition:opacity 0.2s, transform 0.1s;
+        display:flex;align-items:center;justify-content:center;
+        width:28px;height:28px;
+      }
+      .remind-btn:hover{transform:scale(1.2);}
+      .remind-btn:active{transform:scale(0.9);}
     `;
 
     if (!this._initialized) {
@@ -251,61 +312,47 @@ class IsraeliPremierLeagueCard extends HTMLElement {
         liveEl.textContent = liveCount > 0 ? `● ${liveCount} LIVE` : `${fixtures.length} משחקים`;
       }
     }
+
+    // אירועי לחיצה על כפתורי תזכורת
+    this.querySelectorAll(".remind-btn").forEach(btn => {
+      btn.addEventListener("click", e => {
+        e.stopPropagation();
+        const fixtureId = btn.dataset.fixtureId;
+        const stateObj = this._hass.states[this._config.entity];
+        const fixtures = stateObj?.attributes?.fixtures || [];
+        const f = fixtures.find(x => x.fixture_id === fixtureId);
+        if (f) this._addReminder(f);
+      });
+    });
   }
 }
 
 customElements.define("israeli-premier-league-card", IsraeliPremierLeagueCard);
 
 class IsraeliPremierLeagueCardEditor extends HTMLElement {
-  setConfig(config) {
-    this._config = { ...config };
-    this._render();
-  }
-
+  setConfig(config) { this._config = { ...config }; this._render(); }
   set hass(h) {}
-
   _fire() {
     this.dispatchEvent(new CustomEvent("config-changed", { detail: { config: this._config }, bubbles: true, composed: true }));
   }
-
   _render() {
     const c = this._config;
     this.innerHTML = `
       <div style="direction:rtl;display:flex;flex-direction:column;gap:12px;padding:4px;">
-        <div>
-          <label style="font-size:12px;color:var(--secondary-text-color);">Entity ID</label>
-          <input id="f-entity" type="text" value="${c.entity||''}" style="width:100%;padding:8px;border-radius:6px;border:1px solid var(--divider-color,#ccc);background:var(--input-fill-color,var(--secondary-background-color,#f5f5f5));color:var(--primary-text-color,#212121);font-size:13px;box-sizing:border-box;">
-        </div>
-        <div>
-          <label style="font-size:12px;color:var(--secondary-text-color);">כותרת</label>
-          <input id="f-title" type="text" value="${c.title||'ליגת העל'}" style="width:100%;padding:8px;border-radius:6px;border:1px solid var(--divider-color,#ccc);background:var(--input-fill-color,var(--secondary-background-color,#f5f5f5));color:var(--primary-text-color,#212121);font-size:13px;box-sizing:border-box;">
-        </div>
-        <div>
-          <label style="font-size:12px;color:var(--secondary-text-color);">משחקים גלויים (ללא גלילה)</label>
-          <input id="f-vis" type="number" min="1" max="20" value="${c.max_events_visible||5}" style="width:100%;padding:8px;border-radius:6px;border:1px solid var(--divider-color,#ccc);background:var(--input-fill-color,var(--secondary-background-color,#f5f5f5));color:var(--primary-text-color,#212121);font-size:13px;box-sizing:border-box;">
-        </div>
-        <div>
-          <label style="font-size:12px;color:var(--secondary-text-color);">סך משחקים (עם גלילה)</label>
-          <input id="f-tot" type="number" min="1" max="50" value="${c.max_events_total||20}" style="width:100%;padding:8px;border-radius:6px;border:1px solid var(--divider-color,#ccc);background:var(--input-fill-color,var(--secondary-background-color,#f5f5f5));color:var(--primary-text-color,#212121);font-size:13px;box-sizing:border-box;">
-        </div>
-        <div>
-          <label style="font-size:12px;color:var(--secondary-text-color);">הדגש משחק X דקות לפני</label>
-          <input id="f-soon" type="number" min="10" max="240" value="${c.soon_minutes||60}" style="width:100%;padding:8px;border-radius:6px;border:1px solid var(--divider-color,#ccc);background:var(--input-fill-color,var(--secondary-background-color,#f5f5f5));color:var(--primary-text-color,#212121);font-size:13px;box-sizing:border-box;">
-        </div>
-        <label style="display:flex;align-items:center;gap:8px;cursor:pointer;">
-          <input id="f-fin" type="checkbox" ${c.show_finished_matches===true?'checked':''}>
-          <span style="font-size:13px;color:var(--primary-text-color);">הצג משחקים שהסתיימו</span>
-        </label>
-        <label style="display:flex;align-items:center;gap:8px;cursor:pointer;">
-          <input id="f-ch" type="checkbox" ${c.show_channels!==false?'checked':''}>
-          <span style="font-size:13px;color:var(--primary-text-color);">הצג ערוצי שידור</span>
-        </label>
-        <label style="display:flex;align-items:center;gap:8px;cursor:pointer;">
-          <input id="f-hdr" type="checkbox" ${c.hide_header?'checked':''}>
-          <span style="font-size:13px;color:var(--primary-text-color);">הסתר כותרת</span>
-        </label>
+        <div><label style="font-size:12px;color:var(--secondary-text-color);">Entity ID</label>
+          <input id="f-entity" type="text" value="${c.entity||''}" style="width:100%;padding:8px;border-radius:6px;border:1px solid var(--divider-color,#ccc);background:var(--input-fill-color,var(--secondary-background-color,#f5f5f5));color:var(--primary-text-color,#212121);font-size:13px;box-sizing:border-box;"></div>
+        <div><label style="font-size:12px;color:var(--secondary-text-color);">כותרת</label>
+          <input id="f-title" type="text" value="${c.title||'ליגת העל'}" style="width:100%;padding:8px;border-radius:6px;border:1px solid var(--divider-color,#ccc);background:var(--input-fill-color,var(--secondary-background-color,#f5f5f5));color:var(--primary-text-color,#212121);font-size:13px;box-sizing:border-box;"></div>
+        <div><label style="font-size:12px;color:var(--secondary-text-color);">משחקים גלויים (ללא גלילה)</label>
+          <input id="f-vis" type="number" min="1" max="20" value="${c.max_events_visible||5}" style="width:100%;padding:8px;border-radius:6px;border:1px solid var(--divider-color,#ccc);background:var(--input-fill-color,var(--secondary-background-color,#f5f5f5));color:var(--primary-text-color,#212121);font-size:13px;box-sizing:border-box;"></div>
+        <div><label style="font-size:12px;color:var(--secondary-text-color);">סך משחקים (עם גלילה)</label>
+          <input id="f-tot" type="number" min="1" max="50" value="${c.max_events_total||20}" style="width:100%;padding:8px;border-radius:6px;border:1px solid var(--divider-color,#ccc);background:var(--input-fill-color,var(--secondary-background-color,#f5f5f5));color:var(--primary-text-color,#212121);font-size:13px;box-sizing:border-box;"></div>
+        <div><label style="font-size:12px;color:var(--secondary-text-color);">הדגש משחק X דקות לפני</label>
+          <input id="f-soon" type="number" min="10" max="240" value="${c.soon_minutes||60}" style="width:100%;padding:8px;border-radius:6px;border:1px solid var(--divider-color,#ccc);background:var(--input-fill-color,var(--secondary-background-color,#f5f5f5));color:var(--primary-text-color,#212121);font-size:13px;box-sizing:border-box;"></div>
+        <label style="display:flex;align-items:center;gap:8px;cursor:pointer;"><input id="f-fin" type="checkbox" ${c.show_finished_matches===true?'checked':''}><span style="font-size:13px;color:var(--primary-text-color);">הצג משחקים שהסתיימו</span></label>
+        <label style="display:flex;align-items:center;gap:8px;cursor:pointer;"><input id="f-ch" type="checkbox" ${c.show_channels!==false?'checked':''}><span style="font-size:13px;color:var(--primary-text-color);">הצג ערוצי שידור</span></label>
+        <label style="display:flex;align-items:center;gap:8px;cursor:pointer;"><input id="f-hdr" type="checkbox" ${c.hide_header?'checked':''}><span style="font-size:13px;color:var(--primary-text-color);">הסתר כותרת</span></label>
       </div>`;
-
     this.querySelector("#f-entity").addEventListener("change", e => { this._config.entity = e.target.value; this._fire(); });
     this.querySelector("#f-title").addEventListener("change",  e => { this._config.title  = e.target.value; this._fire(); });
     this.querySelector("#f-vis").addEventListener("change",    e => { this._config.max_events_visible = parseInt(e.target.value); this._fire(); });
@@ -318,11 +365,5 @@ class IsraeliPremierLeagueCardEditor extends HTMLElement {
 }
 
 customElements.define("israeli-premier-league-card-editor", IsraeliPremierLeagueCardEditor);
-
 window.customCards = window.customCards || [];
-window.customCards.push({
-  type: "israeli-premier-league-card",
-  name: "Israeli Premier League Card",
-  description: "כרטיס משחקי ליגת העל הישראלית",
-  preview: true,
-});
+window.customCards.push({ type: "israeli-premier-league-card", name: "Israeli Premier League Card", description: "כרטיס משחקי ליגת העל הישראלית", preview: true });
