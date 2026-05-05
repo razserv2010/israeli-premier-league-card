@@ -3,7 +3,7 @@ class IsraeliPremierLeagueCard extends HTMLElement {
     super();
     this._initialized = false;
     this._lastData = null;
-    this._reminders = new Set(); // fixture_ids שסומנו לתזכורת
+    this._reminders = new Set();
   }
 
   setConfig(config) {
@@ -15,8 +15,11 @@ class IsraeliPremierLeagueCard extends HTMLElement {
     this._hass = hass;
     const stateObj = hass.states[this._config.entity];
     const newData = JSON.stringify(stateObj?.attributes?.fixtures || []);
-    if (newData === this._lastData) return;
-    this._lastData = newData;
+    const remindersState = hass.states["input_text.ligat_haal_reminders"]?.state || "";
+    const newKey = newData + remindersState;
+    if (newKey === this._lastData) return;
+    this._lastData = newKey;
+    this._loadReminders(remindersState);
     this._updateCard(stateObj);
   }
 
@@ -60,68 +63,49 @@ class IsraeliPremierLeagueCard extends HTMLElement {
     return "LIVE";
   }
 
-  // קרא את רשימת התזכורות מ-input_text
-  _loadReminders() {
-    if (!this._hass) return;
-    const stateObj = this._hass.states["input_text.ligat_haal_reminders"];
-    if (!stateObj || !stateObj.state || stateObj.state === "unknown") return;
-    try {
-      const data = JSON.parse(stateObj.state);
-      this._reminders = new Set(data.map(r => r.fixture_id));
-    } catch(e) { this._reminders = new Set(); }
+  _loadReminders(state) {
+    if (!state || state === "unknown" || state === "") {
+      this._reminders = new Set();
+      return;
+    }
+    this._reminders = new Set(state.split(",").map(s => s.trim()).filter(Boolean));
   }
 
-  // שמור רשימת תזכורות ל-input_text
-  async _saveReminders(remindersArray) {
-    if (!this._hass) return;
+  async _toggleReminder(f) {
+    const id = f.fixture_id;
+    const current = new Set(this._reminders);
+
+    if (current.has(id)) {
+      current.delete(id);
+    } else {
+      current.add(id);
+    }
+
+    const value = Array.from(current).join(",");
+
     await this._hass.callService("input_text", "set_value", {
       entity_id: "input_text.ligat_haal_reminders",
-      value: JSON.stringify(remindersArray),
+      value: value,
     });
-  }
 
-  // הוסף תזכורת למשחק
-  async _addReminder(f) {
-    if (!this._hass) return;
+    this._reminders = current;
 
-    // קרא רשימה קיימת
-    const stateObj = this._hass.states["input_text.ligat_haal_reminders"];
-    let current = [];
-    try {
-      if (stateObj && stateObj.state && stateObj.state !== "unknown") {
-        current = JSON.parse(stateObj.state);
-      }
-    } catch(e) {}
-
-    // בדוק אם כבר קיים
-    const exists = current.find(r => r.fixture_id === f.fixture_id);
-    if (exists) {
-      // הסר תזכורת
-      current = current.filter(r => r.fixture_id !== f.fixture_id);
-      this._reminders.delete(f.fixture_id);
-      await this._saveReminders(current);
-      this._showToast(`🔕 תזכורת בוטלה — ${f.home_team} נגד ${f.away_team}`, "#ef4444");
-    } else {
-      // הוסף תזכורת
-      current.push({
-        fixture_id: f.fixture_id,
-        home_team: f.home_team,
-        away_team: f.away_team,
-        match_date: f.match_date,
-        match_time: f.match_time,
-        venue: f.venue || "",
-      });
-      this._reminders.add(f.fixture_id);
-      await this._saveReminders(current);
-      this._showToast(`🔔 תזכורת נקבעה — ${f.home_team} נגד ${f.away_team}\nשעה / חצי שעה / 10 דק׳ לפני`, "#22c55e");
-    }
-
-    // עדכן כפתור
-    const btn = this.querySelector(`[data-fixture-id="${f.fixture_id}"]`);
+    // עדכן כפתור מיידית
+    const btn = this.querySelector(`[data-fixture-id="${id}"]`);
     if (btn) {
-      btn.textContent = this._reminders.has(f.fixture_id) ? "🔔" : "🔕";
-      btn.style.opacity = this._reminders.has(f.fixture_id) ? "1" : "0.4";
+      const has = current.has(id);
+      btn.textContent = has ? "🔔" : "🔕";
+      btn.style.opacity = has ? "1" : "0.35";
+      btn.title = has ? "בטל תזכורת" : "הגדר תזכורת";
     }
+
+    const has = current.has(id);
+    this._showToast(
+      has
+        ? `🔔 תזכורת נקבעה!\n${f.home_team} נגד ${f.away_team}\n60 / 30 / 10 דק׳ לפני`
+        : `🔕 תזכורת בוטלה\n${f.home_team} נגד ${f.away_team}`,
+      has ? "#22c55e" : "#ef4444"
+    );
   }
 
   _showToast(msg, color) {
@@ -133,7 +117,7 @@ class IsraeliPremierLeagueCard extends HTMLElement {
       font-size:13px;font-weight:600;
       z-index:99999;direction:rtl;text-align:center;
       box-shadow:0 4px 20px rgba(0,0,0,0.3);
-      max-width:280px;line-height:1.5;
+      max-width:280px;line-height:1.6;
       white-space:pre-line;
     `;
     toast.textContent = msg;
@@ -142,8 +126,6 @@ class IsraeliPremierLeagueCard extends HTMLElement {
   }
 
   _updateCard(stateObj) {
-    this._loadReminders();
-
     const cfg     = this._config;
     const maxVis  = parseInt(cfg.max_events_visible) || 5;
     const maxTot  = parseInt(cfg.max_events_total)   || 20;
@@ -171,8 +153,7 @@ class IsraeliPremierLeagueCard extends HTMLElement {
     });
 
     let body = "";
-    const dateKeys = Object.keys(groups);
-    dateKeys.forEach((date, dateIdx) => {
+    Object.keys(groups).forEach((date, dateIdx) => {
       const games = groups[date];
       body += `
         <div class="date-section ${dateIdx > 0 ? 'date-section-gap' : ''}">
@@ -289,13 +270,7 @@ class IsraeliPremierLeagueCard extends HTMLElement {
       .tag-soon{color:#a78bfa;}
       .tag-done{color:#475569;}
       .ch{font-size:10px;color:#475569;text-align:center;margin-top:4px;white-space:nowrap;}
-      .remind-btn{
-        background:none;border:none;cursor:pointer;
-        font-size:16px;padding:4px;border-radius:6px;
-        transition:opacity 0.2s, transform 0.1s;
-        display:flex;align-items:center;justify-content:center;
-        width:28px;height:28px;
-      }
+      .remind-btn{background:none;border:none;cursor:pointer;font-size:16px;padding:4px;border-radius:6px;transition:opacity 0.2s,transform 0.1s;display:flex;align-items:center;justify-content:center;width:28px;height:28px;}
       .remind-btn:hover{transform:scale(1.2);}
       .remind-btn:active{transform:scale(0.9);}
     `;
@@ -313,15 +288,12 @@ class IsraeliPremierLeagueCard extends HTMLElement {
       }
     }
 
-    // אירועי לחיצה על כפתורי תזכורת
     this.querySelectorAll(".remind-btn").forEach(btn => {
       btn.addEventListener("click", e => {
         e.stopPropagation();
-        const fixtureId = btn.dataset.fixtureId;
-        const stateObj = this._hass.states[this._config.entity];
-        const fixtures = stateObj?.attributes?.fixtures || [];
-        const f = fixtures.find(x => x.fixture_id === fixtureId);
-        if (f) this._addReminder(f);
+        const id = btn.dataset.fixtureId;
+        const f = (stateObj?.attributes?.fixtures || []).find(x => x.fixture_id === id);
+        if (f) this._toggleReminder(f);
       });
     });
   }
@@ -332,9 +304,7 @@ customElements.define("israeli-premier-league-card", IsraeliPremierLeagueCard);
 class IsraeliPremierLeagueCardEditor extends HTMLElement {
   setConfig(config) { this._config = { ...config }; this._render(); }
   set hass(h) {}
-  _fire() {
-    this.dispatchEvent(new CustomEvent("config-changed", { detail: { config: this._config }, bubbles: true, composed: true }));
-  }
+  _fire() { this.dispatchEvent(new CustomEvent("config-changed", { detail: { config: this._config }, bubbles: true, composed: true })); }
   _render() {
     const c = this._config;
     this.innerHTML = `
