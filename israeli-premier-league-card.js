@@ -198,16 +198,15 @@ class IsraeliPremierLeagueCard extends HTMLElement {
         const sep = idx < games.length-1 ? `<hr class="sep">` : "";
 
         const reminderBtn = canRemind
-          ? `<button class="remind-btn" data-fixture-id="${f.fixture_id}" style="opacity:${hasReminder?'1':'0.35'}" title="${hasReminder?'בטל תזכורת':'הגדר תזכורת'}">${hasReminder?'🔔':'🔕'}</button>`
-          : `<div style="width:28px;"></div>`;
+          ? `<button class="remind-btn" data-fixture-id="${f.fixture_id}" style="opacity:${hasReminder?'1':'0.5'}">${hasReminder?'🔔 תזכורת פעילה':'🔕 תזכר אותי'}</button>`
+          : ``;
 
         body += `
           <div class="${rowCls}">
             ${dot}
             <div class="team">${hl}<span class="tname">${f.home_team}</span></div>
-            <div class="mid">${center}${ch}</div>
+            <div class="mid">${center}${reminderBtn}${ch}</div>
             <div class="team">${al}<span class="tname">${f.away_team}</span></div>
-            ${reminderBtn}
           </div>${sep}`;
       });
     });
@@ -242,7 +241,7 @@ class IsraeliPremierLeagueCard extends HTMLElement {
       .date-row{display:flex;align-items:center;gap:8px;padding:10px 16px 4px;}
       .date-line{flex:1;height:1px;background:rgba(255,255,255,0.06);}
       .date-label{font-size:12px;font-weight:700;color:#60a5fa;white-space:nowrap;}
-      .mrow{position:relative;display:grid;grid-template-columns:1fr 80px 1fr 28px;align-items:center;padding:12px 10px 12px 22px;gap:6px;border-right:2px solid transparent;transition:background 0.2s;}
+      .mrow{position:relative;display:grid;grid-template-columns:1fr 80px 1fr;align-items:center;padding:12px 10px 12px 22px;gap:6px;border-right:2px solid transparent;transition:background 0.2s;}
       .mrow:hover{background:rgba(255,255,255,0.03);}
       .live-row{background:rgba(74,222,128,0.06);border-right:2px solid #4ade80;}
       .soon-row{background:rgba(167,139,250,0.06);border-right:2px solid #a78bfa;}
@@ -270,9 +269,9 @@ class IsraeliPremierLeagueCard extends HTMLElement {
       .tag-soon{color:#a78bfa;}
       .tag-done{color:#475569;}
       .ch{font-size:10px;color:#475569;text-align:center;margin-top:4px;white-space:nowrap;}
-      .remind-btn{background:none;border:none;cursor:pointer;font-size:16px;padding:4px;border-radius:6px;transition:opacity 0.2s,transform 0.1s;display:flex;align-items:center;justify-content:center;width:28px;height:28px;}
-      .remind-btn:hover{transform:scale(1.2);}
-      .remind-btn:active{transform:scale(0.9);}
+      .remind-btn{background:rgba(167,139,250,0.1);border:1px solid rgba(167,139,250,0.25);color:#a78bfa;cursor:pointer;font-size:10px;padding:2px 8px;border-radius:20px;transition:all 0.2s;margin-top:3px;white-space:nowrap;}
+      .remind-btn:hover{background:rgba(167,139,250,0.2);}
+      .remind-btn:active{transform:scale(0.95);}
     `;
 
     if (!this._initialized) {
